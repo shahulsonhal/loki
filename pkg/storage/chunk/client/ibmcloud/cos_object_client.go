@@ -12,7 +12,7 @@ import (
 
 	ibm "github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
-	"github.com/IBM/ibm-cos-sdk-go/aws/credentials"
+	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam"
 	"github.com/IBM/ibm-cos-sdk-go/aws/session"
 	cos "github.com/IBM/ibm-cos-sdk-go/service/s3"
 	cosiface "github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
@@ -33,6 +33,7 @@ var (
 	errEmptyEndpoint               = errors.New("endpoint should not be empty")
 	errEmptyBucket                 = errors.New("at least one bucket name must be specified")
 	errCOSConfig                   = "failed to build cos config"
+	errEmptyApiKey                 = errors.New("must supply APIkey")
 )
 
 var cosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -52,14 +53,17 @@ func init() {
 
 // COSConfig specifies config for storing chunks on IBM cos.
 type COSConfig struct {
-	ForcePathStyle  bool           `yaml:"forcepathstyle"`
-	BucketNames     string         `yaml:"bucketnames"`
-	Endpoint        string         `yaml:"endpoint"`
-	Region          string         `yaml:"region"`
-	AccessKeyID     string         `yaml:"access_key_id"`
-	SecretAccessKey flagext.Secret `yaml:"secret_access_key"`
-	HTTPConfig      HTTPConfig     `yaml:"http_config"`
-	BackoffConfig   backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
+	ForcePathStyle    bool           `yaml:"forcepathstyle"`
+	BucketNames       string         `yaml:"bucketnames"`
+	Endpoint          string         `yaml:"endpoint"`
+	Region            string         `yaml:"region"`
+	AccessKeyID       string         `yaml:"access_key_id"`
+	SecretAccessKey   flagext.Secret `yaml:"secret_access_key"`
+	HTTPConfig        HTTPConfig     `yaml:"http_config"`
+	BackoffConfig     backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
+	ApiKey            flagext.Secret `yaml:"api_key"`
+	ServiceInstanceID string         `yaml:"service_instance_id"`
+	AuthEndpoint      string         `yaml:"authendpoint"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -89,6 +93,10 @@ func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"COS.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"COS.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"COS.max-retries", 5, "Maximum number of times to retry when cos get Object")
+
+	f.Var(&cfg.ApiKey, prefix+"api-key", "api Key")
+	f.StringVar(&cfg.AuthEndpoint, prefix+"AuthEndpoint", "https://iam.cloud.ibm.com/identity/token", "Auth Endpoint to connect to.")
+	f.StringVar(&cfg.ServiceInstanceID, prefix+"ServiceInstanceID", "", "ServiceInstanceID")
 }
 
 type COSObjectClient struct {
@@ -135,6 +143,10 @@ func validate(cfg COSConfig) error {
 	if cfg.Endpoint == "" {
 		return errEmptyEndpoint
 	}
+
+	if cfg.ApiKey.String() == "" {
+		return errEmptyApiKey
+	}
 	return nil
 }
 
@@ -152,9 +164,9 @@ func buildCOSClient(cfg COSConfig, hedgingCfg hedging.Config, hedging bool) (*co
 
 	cosConfig = cosConfig.WithRegion(cfg.Region)
 
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
-		cosConfig = cosConfig.WithCredentials(creds)
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" && cfg.ApiKey.String() != "" {
+		cosConfig = cosConfig.WithCredentials(ibmiam.NewStaticCredentials(ibm.NewConfig(),
+			cfg.AuthEndpoint, cfg.ApiKey.String(), cfg.ServiceInstanceID))
 	}
 
 	transport := http.RoundTripper(&http.Transport{
