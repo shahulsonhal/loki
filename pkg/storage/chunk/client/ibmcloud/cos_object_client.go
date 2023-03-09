@@ -28,17 +28,16 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
+const DEFAULT_COS_AUTH_ENDPOINT = "https://iam.cloud.ibm.com/identity/token"
+
 var (
-	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
-	errInvalidCOSHMACCredentials   = errors.New("must supply both an Access Key ID and Secret Access Key or neither")
-	errEmptyRegion                 = errors.New("region should not be empty")
-	errEmptyEndpoint               = errors.New("endpoint should not be empty")
-	errEmptyBucket                 = errors.New("at least one bucket name must be specified")
-	errCOSConfig                   = "failed to build cos config"
-	errEmptyApiKey                 = errors.New("must supply APIkey")
-	errAuthEndpoint                = errors.New("must supply AuthEndpoint")
-	errServiceInstanceID           = errors.New("must supply ServiceInstanceID")
-	errInvalidCredentials          = errors.New("must supply any of  Access Key ID , Secret Access Key or apikey")
+	errInvalidCOSHMACCredentials = errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+	errEmptyRegion               = errors.New("region should not be empty")
+	errEmptyEndpoint             = errors.New("endpoint should not be empty")
+	errEmptyBucket               = errors.New("at least one bucket name must be specified")
+	errCOSConfig                 = "failed to build cos config"
+	errServiceInstanceID         = errors.New("must supply ServiceInstanceID")
+	errInvalidCredentials        = errors.New("must supply any of Access Key ID and Secret Access Key or API Key")
 )
 
 var cosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -100,8 +99,8 @@ func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"COS.max-retries", 5, "Maximum number of times to retry when cos get Object")
 
 	f.Var(&cfg.ApiKey, prefix+"api-key", "api Key")
-	f.StringVar(&cfg.AuthEndpoint, prefix+"AuthEndpoint", "https://iam.cloud.ibm.com/identity/token", "Auth Endpoint to connect to.")
-	f.StringVar(&cfg.ServiceInstanceID, prefix+"ServiceInstanceID", "", "ServiceInstanceID")
+	f.StringVar(&cfg.AuthEndpoint, prefix+"auth-endpoint", DEFAULT_COS_AUTH_ENDPOINT, "Auth Endpoint to connect to.")
+	f.StringVar(&cfg.ServiceInstanceID, prefix+"service-instance-id", "", "COS service instance id to use")
 }
 
 type COSObjectClient struct {
@@ -136,7 +135,7 @@ func NewCOSObjectClient(cfg COSConfig, hedgingCfg hedging.Config) (*COSObjectCli
 }
 
 func validate(cfg COSConfig) error {
-	if cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "" && cfg.ApiKey.String() == "" {
+	if (cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "") && cfg.ApiKey.String() == "" {
 		return errInvalidCredentials
 	}
 
@@ -154,7 +153,7 @@ func validate(cfg COSConfig) error {
 	}
 
 	if cfg.ApiKey.String() != "" && cfg.AuthEndpoint == "" {
-		return errAuthEndpoint
+		cfg.AuthEndpoint = DEFAULT_COS_AUTH_ENDPOINT
 	}
 
 	if cfg.ApiKey.String() != "" && cfg.ServiceInstanceID == "" {
