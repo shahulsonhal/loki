@@ -68,7 +68,7 @@ type COSConfig struct {
 	BackoffConfig     backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
 	ApiKey            flagext.Secret `yaml:"api_key"`
 	ServiceInstanceID string         `yaml:"service_instance_id"`
-	AuthEndpoint      string         `yaml:"authendpoint"`
+	AuthEndpoint      string         `yaml:"auth_endpoint"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -153,15 +153,11 @@ func validate(cfg COSConfig) error {
 		return errEmptyEndpoint
 	}
 
-	if cfg.ApiKey.String() == "" {
-		return errEmptyApiKey
-	}
-
-	if cfg.AuthEndpoint == "" {
+	if cfg.ApiKey.String() != "" && cfg.AuthEndpoint == "" {
 		return errAuthEndpoint
 	}
 
-	if cfg.ServiceInstanceID == "" {
+	if cfg.ApiKey.String() != "" && cfg.ServiceInstanceID == "" {
 		return errServiceInstanceID
 	}
 	return nil
