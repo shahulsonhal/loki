@@ -12,10 +12,12 @@ import (
 
 	ibm "github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
+	"github.com/IBM/ibm-cos-sdk-go/aws/credentials"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam"
 	"github.com/IBM/ibm-cos-sdk-go/aws/session"
 	cos "github.com/IBM/ibm-cos-sdk-go/service/s3"
 	cosiface "github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
+
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -34,6 +36,9 @@ var (
 	errEmptyBucket                 = errors.New("at least one bucket name must be specified")
 	errCOSConfig                   = "failed to build cos config"
 	errEmptyApiKey                 = errors.New("must supply APIkey")
+	errAuthEndpoint                = errors.New("must supply AuthEndpoint")
+	errServiceInstanceID           = errors.New("must supply ServiceInstanceID")
+	errInvalidCredentials          = errors.New("must supply any of  Access Key ID , Secret Access Key or apikey")
 )
 
 var cosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -131,6 +136,10 @@ func NewCOSObjectClient(cfg COSConfig, hedgingCfg hedging.Config) (*COSObjectCli
 }
 
 func validate(cfg COSConfig) error {
+	if cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "" && cfg.ApiKey.String() == "" {
+		return errInvalidCredentials
+	}
+
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() != "" {
 		return errInvalidCOSHMACCredentials
@@ -146,6 +155,25 @@ func validate(cfg COSConfig) error {
 
 	if cfg.ApiKey.String() == "" {
 		return errEmptyApiKey
+	}
+
+	if cfg.AuthEndpoint == "" {
+		return errAuthEndpoint
+	}
+
+	if cfg.ServiceInstanceID == "" {
+		return errServiceInstanceID
+	}
+	return nil
+}
+
+func getCreds(cfg COSConfig) *credentials.Credentials {
+	if cfg.ApiKey.String() != "" {
+		return ibmiam.NewStaticCredentials(ibm.NewConfig(),
+			cfg.AuthEndpoint, cfg.ApiKey.String(), cfg.ServiceInstanceID)
+	}
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
+		return credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 	}
 	return nil
 }
@@ -164,10 +192,7 @@ func buildCOSClient(cfg COSConfig, hedgingCfg hedging.Config, hedging bool) (*co
 
 	cosConfig = cosConfig.WithRegion(cfg.Region)
 
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" && cfg.ApiKey.String() != "" {
-		cosConfig = cosConfig.WithCredentials(ibmiam.NewStaticCredentials(ibm.NewConfig(),
-			cfg.AuthEndpoint, cfg.ApiKey.String(), cfg.ServiceInstanceID))
-	}
+	cosConfig = cosConfig.WithCredentials(getCreds(cfg))
 
 	transport := http.RoundTripper(&http.Transport{
 		Proxy: http.ProxyFromEnvironment,
