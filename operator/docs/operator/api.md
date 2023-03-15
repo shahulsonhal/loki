@@ -1464,6 +1464,9 @@ string
 </tr><tr><td><p>&#34;swift&#34;</p></td>
 <td><p>ObjectStorageSecretSwift when using Swift for Loki storage</p>
 </td>
+</tr><tr><td><p>&#34;cos&#34;</p></td>
+<td><p>ObjectStorageSecretCOS when using IBM Cloud Object Storage for Loki storage</p>
+</td>
 </tr></tbody>
 </table>
 
@@ -3982,6 +3985,9 @@ string
 </td>
 </tr><tr><td><p>&#34;swift&#34;</p></td>
 <td><p>ObjectStorageSecretSwift when using Swift for Loki storage</p>
+</td>
+</tr>tr><td><p>&#34;cos&#34;</p></td>
+<td><p>ObjectStorageSecretCOS when using IBM Cloud Object Storage for Loki storage</p>
 </td>
 </tr></tbody>
 </table>

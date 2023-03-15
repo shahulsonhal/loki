@@ -3,7 +3,7 @@ title: "Object Storage"
 description: "Setup for storing logs to Object Storage"
 lead: ""
 date: 2022-06-21T08:48:45+00:00
-lastmod: 2022-06-21T08:48:45+00:00
+lastmod: 2023-03-13T08:48:45+00:00
 draft: false
 images: []
 menu:
@@ -13,7 +13,7 @@ weight: 100
 toc: true
 ---
 
-Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation) and  [Swift](https://docs.openstack.org/swift/latest/) for LokiStack object storage.
+Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation), [Swift](https://docs.openstack.org/swift/latest/) and [COS](https://cloud.ibm.com/) for LokiStack object storage.
 
 ## AWS S3
 
@@ -238,4 +238,49 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
       secret:
         name: lokistack-dev-swift
         type: swift
+  ```
+
+## IBM Cloud COS
+
+### Requirements
+
+* Create a [bucket](https://cloud.ibm.com/docs/cloud-object-storage?topic=cloud-object-storage-getting-started-cloud-object-storage#gs-create-buckets) on IBM Cloud.
+
+### Installation
+
+* Deploy the Loki Operator to your cluster.
+
+* Create an Object Storage secret with keys as follows:
+  * With HMAC authentication
+
+    ```console
+    kubectl create secret generic lokistack-dev-cos \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<IBM_CLOUD_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<IBM_CLOUD_ACCESS_KEY_ID>" \
+      --from-literal=access_key_secret="<IBM_CLOUD_ACCESS_KEY_SECRET>" \
+      --from-literal=region="<IBM_CLOUD_REGION_YOUR_BUCKET_LIVES_IN>"
+    ```
+  * With APIKEY authentication
+
+    ```console
+    kubectl create secret generic lokistack-dev-cos \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<IBM_CLOUD_BUCKET_ENDPOINT>" \
+      --from-literal=api_key="<IBM_CLOUD_IAM_APIKEY>" \
+      --from-literal=service_instance_id="<IBM_CLOUD_COS_SERVICE_INSTANCE_ID>" \
+      --from-literal=auth_endpoint="<IBM_CLOUD_IAM_AUTH_ENDPOINT>" \
+      --from-literal=region="<IBM_CLOUD_REGION_YOUR_BUCKET_LIVES_IN>"
+    ```
+
+  where `lokistack-dev-cos` is the secret name.
+
+* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `cos`:
+
+  ```yaml
+  spec:
+    storage:
+      secret:
+        name: lokistack-dev-cos
+        type: cos
   ```
