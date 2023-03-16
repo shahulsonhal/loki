@@ -57,17 +57,19 @@ func init() {
 
 // COSConfig specifies config for storing chunks on IBM cos.
 type COSConfig struct {
-	ForcePathStyle    bool           `yaml:"forcepathstyle"`
-	BucketNames       string         `yaml:"bucketnames"`
-	Endpoint          string         `yaml:"endpoint"`
-	Region            string         `yaml:"region"`
-	AccessKeyID       string         `yaml:"access_key_id"`
-	SecretAccessKey   flagext.Secret `yaml:"secret_access_key"`
-	HTTPConfig        HTTPConfig     `yaml:"http_config"`
-	BackoffConfig     backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
-	ApiKey            flagext.Secret `yaml:"api_key"`
-	ServiceInstanceID string         `yaml:"service_instance_id"`
-	AuthEndpoint      string         `yaml:"auth_endpoint"`
+	ForcePathStyle     bool           `yaml:"forcepathstyle"`
+	BucketNames        string         `yaml:"bucketnames"`
+	Endpoint           string         `yaml:"endpoint"`
+	Region             string         `yaml:"region"`
+	AccessKeyID        string         `yaml:"access_key_id"`
+	SecretAccessKey    flagext.Secret `yaml:"secret_access_key"`
+	HTTPConfig         HTTPConfig     `yaml:"http_config"`
+	BackoffConfig      backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
+	ApiKey             flagext.Secret `yaml:"api_key"`
+	ServiceInstanceID  string         `yaml:"service_instance_id"`
+	AuthEndpoint       string         `yaml:"auth_endpoint"`
+	CRTokenPath        string         `yaml:"cr_token_path"`
+	TrusterProfileName string         `yaml:"truster_profile_name"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -163,21 +165,28 @@ func validate(cfg COSConfig) error {
 }
 
 func getCreds(cfg COSConfig) *credentials.Credentials {
+	if cfg.CRTokenPath != "" {
+		return ibmiam.NewTrusterProfileCredentials(ibm.NewConfig(),
+			cfg.AuthEndpoint, cfg.TrusterProfileName, cfg.CRTokenPath)
+	}
+
 	if cfg.ApiKey.String() != "" {
 		return ibmiam.NewStaticCredentials(ibm.NewConfig(),
 			cfg.AuthEndpoint, cfg.ApiKey.String(), cfg.ServiceInstanceID)
 	}
+
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
 		return credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 	}
+
 	return nil
 }
 
 func buildCOSClient(cfg COSConfig, hedgingCfg hedging.Config, hedging bool) (*cos.S3, error) {
 	var err error
-	if err = validate(cfg); err != nil {
-		return nil, err
-	}
+	// if err = validate(cfg); err != nil {
+	// 	return nil, err
+	// }
 	cosConfig := &ibm.Config{}
 
 	cosConfig = cosConfig.WithMaxRetries(0)                        // We do our own retries, so we can monitor them
