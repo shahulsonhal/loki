@@ -334,7 +334,7 @@ storage_config:
 ```
 
 
-## 11-COS-HMAC-Example
+## 11-COS-HMAC-Example.yaml
 
 ```yaml
 
