@@ -57,17 +57,20 @@ func init() {
 
 // COSConfig specifies config for storing chunks on IBM cos.
 type COSConfig struct {
-	ForcePathStyle    bool           `yaml:"forcepathstyle"`
-	BucketNames       string         `yaml:"bucketnames"`
-	Endpoint          string         `yaml:"endpoint"`
-	Region            string         `yaml:"region"`
-	AccessKeyID       string         `yaml:"access_key_id"`
-	SecretAccessKey   flagext.Secret `yaml:"secret_access_key"`
-	HTTPConfig        HTTPConfig     `yaml:"http_config"`
-	BackoffConfig     backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
-	APIKey            flagext.Secret `yaml:"api_key"`
-	ServiceInstanceID string         `yaml:"service_instance_id"`
-	AuthEndpoint      string         `yaml:"auth_endpoint"`
+	ForcePathStyle     bool           `yaml:"forcepathstyle"`
+	BucketNames        string         `yaml:"bucketnames"`
+	Endpoint           string         `yaml:"endpoint"`
+	Region             string         `yaml:"region"`
+	AccessKeyID        string         `yaml:"access_key_id"`
+	SecretAccessKey    flagext.Secret `yaml:"secret_access_key"`
+	HTTPConfig         HTTPConfig     `yaml:"http_config"`
+	BackoffConfig      backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
+	APIKey             flagext.Secret `yaml:"api_key"`
+	ServiceInstanceID  string         `yaml:"service_instance_id"`
+	AuthEndpoint       string         `yaml:"auth_endpoint"`
+	CRTokenFilePath    string         `yaml:"cr_token_file_path"`
+	TrusterProfileName string         `yaml:"truster_profile_name"`
+	TrusterProfileID   string         `yaml:"truster_profile_id"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -135,7 +138,8 @@ func NewCOSObjectClient(cfg COSConfig, hedgingCfg hedging.Config) (*COSObjectCli
 }
 
 func validate(cfg COSConfig) error {
-	if (cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "") && cfg.APIKey.String() == "" {
+	if (cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "") && cfg.APIKey.String() == "" && cfg.TrusterProfileName == "" &&
+		cfg.TrusterProfileID == "" && cfg.CRTokenFilePath == "" {
 		return errInvalidCredentials
 	}
 
@@ -163,6 +167,9 @@ func validate(cfg COSConfig) error {
 }
 
 func getCreds(cfg COSConfig) *credentials.Credentials {
+	if cfg.CRTokenFilePath != "" {
+		return NewTrustedProfileCredentials(cfg.AuthEndpoint, cfg.TrusterProfileName, cfg.TrusterProfileID, cfg.CRTokenFilePath)
+	}
 	if cfg.APIKey.String() != "" {
 		return ibmiam.NewStaticCredentials(ibm.NewConfig(),
 			cfg.AuthEndpoint, cfg.APIKey.String(), cfg.ServiceInstanceID)
