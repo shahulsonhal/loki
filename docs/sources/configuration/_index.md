@@ -808,7 +808,7 @@ storage:
   [swift: <swift_storage_config>]
 
   # Configures backend rule storage for IBM Cloud Object Storage (COS).
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage
   [cos: <cos_storage_config>]
 
   # Configures backend rule storage for a local file system directory.
