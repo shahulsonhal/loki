@@ -1,17 +1,10 @@
 package ibmcloud
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam/token"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +12,7 @@ func Test_TrustedProfileProvider(t *testing.T) {
 	tests := []struct {
 		name,
 		trustedProfileProviderName,
-		authEndPoint,
+		authEndpoint,
 		trustedProfileName,
 		trustedProfileID,
 		crTokenFilePath string
@@ -47,7 +40,7 @@ func Test_TrustedProfileProvider(t *testing.T) {
 			"",
 			"",
 			false,
-			errors.New("crTokenFilePathNotFound: CR token file path not found"),
+			errors.New("crTokenFilePathEmpty: must supply cr token file path"),
 		},
 		{
 			"empty profileName and profileID",
@@ -58,28 +51,14 @@ func Test_TrustedProfileProvider(t *testing.T) {
 			"",
 			"",
 			false,
-			errors.New("trustedProfileNotFound: Trusted profile name or id not found"),
+			errors.New("trustedProfileNotFound: either Trusted profile name or id must be provided"),
 		},
 	}
 
 	for _, tt := range tests {
 
-		authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := token.Token{
-				AccessToken:  tt.token,
-				RefreshToken: "not-supported",
-				TokenType:    tokenType,
-				ExpiresIn:    int64((time.Hour * 24).Seconds()),
-				Expiration:   time.Now().Add(time.Hour * 24).Unix(),
-			}
-
-			data, err := json.Marshal(token)
-			require.NoError(t, err)
-
-			w.WriteHeader(http.StatusAccepted)
-			_, err = w.Write(data)
-			require.NoError(t, err)
-		}))
+		authServer := authServer(tt.token, tokenType)
+		defer authServer.Close()
 
 		if tt.isValid {
 			file, err := createTempFile("crtoken", "test cr token")
@@ -92,22 +71,22 @@ func Test_TrustedProfileProvider(t *testing.T) {
 			tt.crTokenFilePath, authServer.URL)
 
 		if !tt.isValid {
-			assert.Equal(t, tt.crTokenFilePath, "", "cr token filepath did not match")
-			assert.Equal(t, tt.wantErr.Error(), prov.ErrorStatus.Error())
+			require.Equal(t, tt.crTokenFilePath, "", "cr token filepath did not match")
+			require.Equal(t, tt.wantErr.Error(), prov.ErrorStatus.Error())
 		} else {
-			assert.Equal(t, tt.trustedProfileName, prov.authenticator.IAMProfileName, "trusted profile name did not match")
-			assert.Equal(t, tt.trustedProfileID, prov.authenticator.IAMProfileID, "trusted profile ID did not match")
-			assert.Equal(t, authServer.URL, prov.authenticator.URL, "auth endpoint did not match")
-			assert.Equal(t, tt.crTokenFilePath, prov.authenticator.CRTokenFilename, "cr token filepath did not match")
-			assert.Equal(t, tt.trustedProfileProviderName, prov.providerName, "provider name did not match")
-			assert.Equal(t, "oauth", prov.providerType)
+			require.Equal(t, tt.trustedProfileName, prov.authenticator.IAMProfileName, "trusted profile name did not match")
+			require.Equal(t, tt.trustedProfileID, prov.authenticator.IAMProfileID, "trusted profile ID did not match")
+			require.Equal(t, authServer.URL, prov.authenticator.URL, "auth endpoint did not match")
+			require.Equal(t, tt.crTokenFilePath, prov.authenticator.CRTokenFilename, "cr token filepath did not match")
+			require.Equal(t, tt.trustedProfileProviderName, prov.providerName, "provider name did not match")
+			require.Equal(t, "oauth", prov.providerType)
 		}
 
 		isValid := prov.IsValid()
-		assert.Equal(t, tt.isValid, isValid)
+		require.Equal(t, tt.isValid, isValid)
 
 		isExpired := prov.IsExpired()
-		assert.Equal(t, true, isExpired)
+		require.Equal(t, true, isExpired)
 
 		cred, err := prov.Retrieve()
 		if tt.wantErr != nil {
@@ -116,13 +95,13 @@ func Test_TrustedProfileProvider(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, tt.token, cred.AccessToken)
-		assert.Equal(t, tokenType, cred.TokenType)
+		require.Equal(t, tt.token, cred.AccessToken)
+		require.Equal(t, tokenType, cred.TokenType)
 	}
 }
 
 func createTempFile(name, fileContent string) (*os.File, error) {
-	file, err := ioutil.TempFile(os.TempDir(), "crtoken")
+	file, err := os.CreateTemp(os.TempDir(), "crtoken")
 	if err != nil {
 		return nil, err
 	}

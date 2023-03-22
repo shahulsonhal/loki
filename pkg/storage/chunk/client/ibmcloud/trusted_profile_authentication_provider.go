@@ -1,12 +1,15 @@
 package ibmcloud
 
 import (
+	"os"
+
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam/token"
 	"github.com/go-kit/log/level"
-	log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/log"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -43,40 +46,48 @@ type TrustedProfileProvider struct {
 // Returns:
 //
 //	TrustedProfileProvider
-func NewTrustedProfileProvider(providerName string, trustedProfileName, trustedProfileID, crTokenFilePath,
-	authEndPoint string) *TrustedProfileProvider {
+func NewTrustedProfileProvider(providerName string, trustedProfileName,
+	trustedProfileID, crTokenFilePath, authEndpoint string) *TrustedProfileProvider {
 	provider := new(TrustedProfileProvider)
 
 	provider.providerName = providerName
 	provider.providerType = "oauth"
 
 	if trustedProfileName == "" && trustedProfileID == "" {
-		provider.ErrorStatus = awserr.New("trustedProfileNotFound", "Trusted profile name or id not found", nil)
+		provider.ErrorStatus = awserr.New("trustedProfileNotFound", "either Trusted profile name or id must be provided", nil)
 		level.Debug(log.Logger).Log("msg", provider.ErrorStatus)
 
 		return provider
 	}
 
 	if crTokenFilePath == "" {
-		provider.ErrorStatus = awserr.New("crTokenFilePathNotFound", "CR token file path not found", nil)
+		provider.ErrorStatus = awserr.New("crTokenFilePathEmpty", "must supply cr token file path", nil)
 		level.Debug(log.Logger).Log("msg", provider.ErrorStatus)
 
 		return provider
+	} else {
+		if _, err := os.Stat(crTokenFilePath); errors.Is(err, os.ErrNotExist) {
+			provider.ErrorStatus = awserr.New("crTokenFileNotFound", "no such file", err)
+			level.Debug(log.Logger).Log("msg", "no such file", "err", err)
+
+			return provider
+		}
 	}
 
-	if authEndPoint == "" {
-		authEndPoint = defaultCOSAuthEndpoint
-		level.Debug(log.Logger).Log("msg", "using default auth endpoint", "endpoint", authEndPoint)
+	if authEndpoint == "" {
+		authEndpoint = defaultCOSAuthEndpoint
+		level.Debug(log.Logger).Log("msg", "using default auth endpoint", "endpoint", authEndpoint)
 	}
 
 	authenticator, err := core.NewContainerAuthenticatorBuilder().
 		SetIAMProfileName(trustedProfileName).
 		SetIAMProfileID(trustedProfileID).
 		SetCRTokenFilename(crTokenFilePath).
-		SetURL(authEndPoint).
+		SetURL(authEndpoint).
 		Build()
+
 	if err != nil {
-		provider.ErrorStatus = awserr.New("errCreatingAuthenticatorClient", "cannot setup new Authenticator client", err)
+		provider.ErrorStatus = awserr.New("errCreatingAuthenticatorClient", "failed to setup new Trusted Profile Authenticator client", err)
 		level.Debug(log.Logger).Log("msg", provider.ErrorStatus)
 
 		return provider
@@ -109,8 +120,8 @@ func (p *TrustedProfileProvider) Retrieve() (credentials.Value, error) {
 
 	tokenValue, err := p.authenticator.GetToken()
 	if err != nil {
-		level.Debug(log.Logger).Log("msg", "error on get token", "err", err)
-		returnErr := awserr.New("TokenGetError", "error on get token", nil)
+		level.Debug(log.Logger).Log("msg", "failed to get token", "err", err)
+		returnErr := awserr.New("TokenGetError", "failed to get token", err)
 
 		return credentials.Value{}, returnErr
 	}
@@ -135,14 +146,14 @@ func (p *TrustedProfileProvider) IsExpired() bool {
 	return true
 }
 
-// NewTPProvider constructor of the IBM IAM provider that uses trusted profile and CR token passed directly
-// Returns: NewTrustedProfileProvider (AWS type)
-func NewTPProvider(authEndPoint, trustedProfileName, trustedProfileID, crTokenFilePath string) *TrustedProfileProvider {
-	return NewTrustedProfileProvider(trustedProfileProviderName, trustedProfileName, trustedProfileID, crTokenFilePath, authEndPoint)
-}
-
 // NewTrustedProfileCredentials constructor for IBM IAM that uses IAM credentials passed in
 // Returns: credentials.NewCredentials(NewTPProvider()) (AWS type)
-func NewTrustedProfileCredentials(authEndPoint, trustedProfileName, trustedProfileID, crTokenFilePath string) *credentials.Credentials {
-	return credentials.NewCredentials(NewTPProvider(authEndPoint, trustedProfileName, trustedProfileID, crTokenFilePath))
+func NewTrustedProfileCredentials(authEndpoint, trustedProfileName,
+	trustedProfileID, crTokenFilePath string) *credentials.Credentials {
+	return credentials.NewCredentials(
+		NewTrustedProfileProvider(
+			trustedProfileProviderName, trustedProfileName,
+			trustedProfileID, crTokenFilePath, authEndpoint,
+		),
+	)
 }
